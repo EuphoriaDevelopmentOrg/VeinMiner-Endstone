@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "endstone-vein-miner"
+version = "2.0.0"
+description = "A powerful vein mining plugin for Endstone servers - mine entire ore veins, trees, and leaves with one hit!"
+authors = [
+    {name = "Euphoria Development"}
+]
+dependencies = [
+    "endstone>=0.10.0",
+    "pyyaml>=6.0",
+    "mysql-connector-python>=8.0.0"
+]
+
+[project.entry-points."endstone"]
+vein-miner = "endstone_vein_miner:VeinMinerPlugin"
+
+[tool.hatchling.build.targets.wheel]
+packages = ["src/endstone_vein_miner"]
+
+[tool.hatchling.build.targets.wheel.force-include]
+"src/endstone_vein_miner/config.toml" = "endstone_vein_miner/config.toml"

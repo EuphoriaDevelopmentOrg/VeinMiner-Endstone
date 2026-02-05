@@ -1,0 +1,232 @@
+# VeinMiner Configuration for Endstone
+# Mine entire ore veins, trees, and leaves with a single break
+
+# Maximum blocks per vein (-1 for unlimited, not recommended)
+max-blocks = 64
+
+# Batch size for processing blocks (higher = faster but more server load)
+# Valid range: 1-100. Recommended: 10 for normal servers, 20 for powerful servers
+batch-size = 10
+
+# Minimum vein size to trigger vein mining (prevents single-block mining)
+min-vein-size = 2
+
+# Cooldown between vein mining operations in milliseconds (prevents spam)
+cooldown-ms = 100
+
+[auto-pickup]
+enabled = true
+# What to do when inventory is full: "drop" or "delete"
+full-inventory-action = "drop"
+
+# Auto-smelt mined ores into ingots
+[auto-smelt]
+enabled = false
+# Require fortune enchantment on tool to activate auto-smelt
+require-fortune = false
+# Only smelt specific ores (empty list = all smeltable ores)
+# Format: ["coal_ore", "iron_ore", "gold_ore", "copper_ore"]
+whitelist = []
+# Give smelting experience when auto-smelting
+give-xp = true
+# XP multiplier for auto-smelt (0.5 = half normal smelting XP)
+xp-multiplier = 0.5
+
+[tool-durability]
+# Durability multiplier (1.0 = normal wear, 2.0 = double wear, 0.5 = half wear)
+multiplier = 1.0
+# Apply durability to unbreaking enchantment calculation
+respect-unbreaking = true
+# Break tool if durability would exceed maximum
+break-on-exceed = true
+
+[experience]
+enabled = true
+# XP bonus multiplier based on vein size
+# Formula: base_xp * (1 + (vein_size / bonus-per-blocks) * multiplier)
+# Example: 10 block vein with bonus-per-blocks=5 and multiplier=0.1 gives 20% bonus (1.2x XP)
+bonus-enabled = true
+bonus-per-blocks = 10  # Grant bonus for every X blocks in vein
+multiplier = 0.05  # 5% bonus per bonus-per-blocks threshold
+
+# World restrictions (disable vein mining in these worlds)
+disabled-worlds = ["creative_world", "spawn"]
+
+[activation]
+# Activation mode: "sneak" (hold shift), "stand" (not sneaking), "always" (always active)
+mode = "sneak"
+# Require specific permission per block type (veinminer.blocks.coal_ore, etc.)
+per-block-permissions = false
+# Only work with proper tools (pickaxe for ores, axe for logs, etc.)
+require-correct-tool = true
+# Maximum distance from player to vein blocks
+max-reach-distance = 100
+
+# Mining pattern/shape for vein detection
+[mining-pattern]
+# Pattern type:
+#   "adjacent" - Only touching blocks (original vein mining behavior)
+#   "cube" - 3D cube around each block
+#   "sphere" - Spherical radius around each block
+#   "vertical" - Vertical column (useful for tree trunks)
+#   "horizontal" - Horizontal plane (useful for ore layers)
+pattern = "adjacent"
+# Radius for sphere/cube patterns (blocks, ignored for adjacent)
+radius = 1
+# Include diagonal blocks (for adjacent mode)
+# If false, only includes 6 faces (up/down/north/south/east/west)
+# If true, includes all 26 surrounding blocks
+include-diagonals = true
+# For vertical pattern: max height to search
+vertical-range = 4
+# For horizontal pattern: max width to search
+horizontal-range = 4
+
+# Particle customization
+[effects.particles]
+# Enable particle effects when breaking blocks
+enabled = true
+# Particle type: "explosion", "flame", "smoke", "sparkle", "heart", "critical"
+type = "explosion"
+# Number of particles per block
+count = 3
+# Particle spawn radius
+radius = 0.5
+# Show particles for every block (false = only at completion)
+per-block = false
+
+# Sound customization
+[effects.sounds]
+# Enable sound effects
+enabled = true
+# Sound to play on completion (e.g., "random.levelup", "random.orb", "mob.enderdragon.hit")
+completion-sound = "random.levelup"
+# Volume (0.0 - 1.0)
+volume = 1.0
+# Pitch (0.5 - 2.0, higher = higher pitch)
+pitch = 1.0
+# Play sound per block broken (can be spammy for large veins)
+per-block-sound = false
+# Sound to play per block (if per-block-sound is true)
+block-sound = "dig.stone"
+
+[limits]
+# Daily/session limits to prevent abuse
+enable-limits = false
+max-veins-per-day = 1000
+max-blocks-per-day = 10000
+reset-time = "00:00"  # Time to reset daily limits (24-hour format)
+
+# Anti-abuse settings
+[anti-abuse]
+# Maximum veins per minute (0 = disabled)
+max-veins-per-minute = 60
+# Block players who exceed limits for X minutes
+temporary-block-duration = 5
+# Log suspicious activity (excessive vein mining)
+log-suspicious-activity = true
+
+[statistics]
+enabled = true
+storage = "yaml"  # "yaml" or "mysql"
+save-to-file = true  # Persist stats to stats.yml
+auto-save-interval = 300  # Auto-save interval in seconds (0 = save on disable only)
+track-per-block-type = true  # Track stats for each block type separately
+milestones = { enabled = true, thresholds = [100, 500, 1000, 5000, 10000] }
+# Announce milestones to all players
+broadcast-milestones = true
+
+[statistics.mysql]
+# You can enable MySQL either by:
+#   1) setting statistics.storage = "mysql"
+#   2) setting this enabled flag to true
+enabled = false
+host = "127.0.0.1"
+port = 3306
+database = "veinminer"
+user = "root"
+password = "change_me"
+table-prefix = "veinminer_"
+connect-timeout = 5
+
+[update-checker]
+enabled = true
+repository = "EuphoriaDevelopmentOrg/VeinMiner-Endstone"
+
+[logging]
+enabled = true
+log-vein-mining = true
+log-config-loading = true
+debug-logging = false  # Enable verbose debug logs (spams console)
+performance-logging = false  # Log performance metrics (vein search/processing times)
+log-player-toggle = false  # Log when players toggle vein mining on/off
+log-cooldown-violations = false  # Log when players hit cooldown
+log-errors-to-file = true  # Save errors to separate error log file
+
+[enabled-blocks]
+ores = true
+logs = true
+leaves = true
+
+[messages]
+reload-success = "&aConfiguration reloaded successfully!"
+stats-header = "&6&l=== Your VeinMiner Statistics ==="
+stats-line = "&eTotal Veins: &f{veins} &7| &eTotal Blocks: &f{blocks} &7| &eLargest Vein: &f{largest}"
+toggle-enabled = "&aVein Mining enabled!"
+toggle-disabled = "&cVein Mining disabled!"
+inventory-full = "&eInventory full! {count} items were {action}."
+vein-too-large = "&cVein size limited to {max} blocks!"
+cooldown-active = "&cPlease wait before vein mining again!"
+wrong-tool = "&cYou need the correct tool to vein mine this block!"
+no-permission = "&cYou don't have permission to vein mine this block type!"
+limit-reached = "&cYou've reached your daily vein mining limit!"
+milestone-reached = "&6&l{player} &ehas mined &6{count} &eblocks with VeinMiner!"
+
+[blocks]
+# Ores
+COAL_ORE = true
+IRON_ORE = true
+GOLD_ORE = true
+DIAMOND_ORE = true
+EMERALD_ORE = true
+LAPIS_ORE = true
+REDSTONE_ORE = true
+COPPER_ORE = true
+
+# Deepslate ores
+DEEPSLATE_COAL_ORE = true
+DEEPSLATE_IRON_ORE = true
+DEEPSLATE_GOLD_ORE = true
+DEEPSLATE_DIAMOND_ORE = true
+DEEPSLATE_EMERALD_ORE = true
+DEEPSLATE_LAPIS_ORE = true
+DEEPSLATE_REDSTONE_ORE = true
+DEEPSLATE_COPPER_ORE = true
+
+# Nether ores
+QUARTZ_ORE = true
+NETHER_GOLD_ORE = true
+ANCIENT_DEBRIS = true
+
+# Amethyst
+AMETHYST_CLUSTER = true
+
+# Logs
+OAK_LOG = true
+SPRUCE_LOG = true
+BIRCH_LOG = true
+JUNGLE_LOG = true
+ACACIA_LOG = true
+DARK_OAK_LOG = true
+MANGROVE_LOG = true
+CHERRY_LOG = true
+
+# Leaves
+OAK_LEAVES = true
+SPRUCE_LEAVES = true
+BIRCH_LEAVES = true
+JUNGLE_LEAVES = true
+ACACIA_LEAVES = true
+DARK_OAK_LEAVES = true
+MANGROVE_LEAVES = true
+CHERRY_LEAVES = true
