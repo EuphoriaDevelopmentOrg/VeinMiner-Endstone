@@ -314,17 +314,27 @@ class VeinMinerPlugin(Plugin):
             self.logger.warning(f"Invalid full-inventory-action value ({self.full_inventory_action}), using default: drop")
             self.full_inventory_action = "drop"
 
-        # Load auto-smelt settings
-        auto_smelt_config = config.get("auto-smelt", {})
-        self.auto_smelt_enabled = auto_smelt_config.get("enabled", False)
-        self.auto_smelt_require_fortune = auto_smelt_config.get("require-fortune", False)
-        self.auto_smelt_give_xp = auto_smelt_config.get("give-xp", True)
-        self.auto_smelt_xp_multiplier = auto_smelt_config.get("xp-multiplier", 0.5)
+        # Load auto-smelt settings (support both dashed and underscored keys).
+        auto_smelt_config = config.get("auto-smelt", config.get("auto_smelt", {}))
+        self.auto_smelt_enabled = bool(auto_smelt_config.get("enabled", auto_smelt_config.get("enable", False)))
+        self.auto_smelt_require_fortune = bool(
+            auto_smelt_config.get("require-fortune", auto_smelt_config.get("require_fortune", False))
+        )
+        self.auto_smelt_give_xp = bool(auto_smelt_config.get("give-xp", auto_smelt_config.get("give_xp", True)))
+        raw_auto_smelt_xp_multiplier = auto_smelt_config.get("xp-multiplier", auto_smelt_config.get("xp_multiplier", 0.5))
+        try:
+            self.auto_smelt_xp_multiplier = float(raw_auto_smelt_xp_multiplier)
+        except (TypeError, ValueError):
+            self.logger.warning("Invalid auto-smelt xp-multiplier value, using default: 0.5")
+            self.auto_smelt_xp_multiplier = 0.5
         if self.auto_smelt_xp_multiplier < 0:
             self.logger.warning("Invalid auto-smelt xp-multiplier value, using default: 0.5")
             self.auto_smelt_xp_multiplier = 0.5
 
-        auto_smelt_whitelist = auto_smelt_config.get("whitelist", [])
+        auto_smelt_whitelist = auto_smelt_config.get(
+            "whitelist",
+            auto_smelt_config.get("allow-list", auto_smelt_config.get("allow_list", [])),
+        )
         self.auto_smelt_whitelist = set()
         if isinstance(auto_smelt_whitelist, list):
             for entry in auto_smelt_whitelist:
@@ -1048,7 +1058,7 @@ class VeinMinerPlugin(Plugin):
         
         try:
             block_type = vein_block.type
-            drop_item, drop_count, xp = self.calculate_block_rewards(block_type, tool)
+            drop_items, xp = self.calculate_block_rewards(block_type, tool)
             
             # Remove block without command spam.
             try:
@@ -1057,12 +1067,14 @@ class VeinMinerPlugin(Plugin):
                 command = f"setblock {vein_block.x} {vein_block.y} {vein_block.z} air"
                 self.server.dispatch_command(self.server.command_sender, command)
 
-            if drop_item and drop_count > 0:
+            for drop_item, drop_count in drop_items.items():
+                if not drop_item or drop_count <= 0:
+                    continue
                 if self.auto_pickup_enabled and items_to_give is not None:
                     # Collect items for batched inventory insert.
                     items_to_give[drop_item] = items_to_give.get(drop_item, 0) + drop_count
                 else:
-                    self.drop_item_stack(vein_block.location, drop_item, drop_count)
+                    self.drop_item_stack(vein_block.location, drop_item, drop_count, player=player)
             
             success = True
             
@@ -1276,6 +1288,7 @@ class VeinMinerPlugin(Plugin):
             "deepslate_iron_ore": "minecraft:iron_ingot",
             "gold_ore": "minecraft:gold_ingot",
             "deepslate_gold_ore": "minecraft:gold_ingot",
+            "nether_gold_ore": "minecraft:gold_ingot",
             "copper_ore": "minecraft:copper_ingot",
             "deepslate_copper_ore": "minecraft:copper_ingot",
             "ancient_debris": "minecraft:netherite_scrap",
@@ -1289,6 +1302,7 @@ class VeinMinerPlugin(Plugin):
             "deepslate_iron_ore": 0.7,
             "gold_ore": 1.0,
             "deepslate_gold_ore": 1.0,
+            "nether_gold_ore": 1.0,
             "copper_ore": 0.7,
             "deepslate_copper_ore": 0.7,
             "ancient_debris": 2.0,
@@ -1331,9 +1345,50 @@ class VeinMinerPlugin(Plugin):
         
         return max(1, base_count * (bonus_roll + 1))
     
-    def calculate_block_rewards(self, block_type: str, tool) -> Tuple[str, int, float]:
-        """Calculate dropped item, amount, and XP for a mined block."""
+    def get_leaf_sapling_drop(self, block_id: str) -> Tuple[Optional[str], float]:
+        """Return sapling-like drop item and base chance for a leaf block."""
+        short_id = self.normalize_block_id(block_id)
+        sapling_drops = {
+            "oak_leaves": ("minecraft:oak_sapling", 0.05),
+            "spruce_leaves": ("minecraft:spruce_sapling", 0.05),
+            "birch_leaves": ("minecraft:birch_sapling", 0.05),
+            "jungle_leaves": ("minecraft:jungle_sapling", 0.025),
+            "acacia_leaves": ("minecraft:acacia_sapling", 0.05),
+            "dark_oak_leaves": ("minecraft:dark_oak_sapling", 0.025),
+            "mangrove_leaves": ("minecraft:mangrove_propagule", 0.05),
+            "cherry_leaves": ("minecraft:cherry_sapling", 0.05),
+        }
+        return sapling_drops.get(short_id, (None, 0.0))
+    
+    def calculate_leaf_rewards(self, block_id: str, tool) -> Dict[str, int]:
+        """Calculate stick/sapling rewards for leaves using vanilla-style base odds."""
+        short_id = self.normalize_block_id(block_id)
+        silk_touch_level = self.get_enchantment_level(tool, "silk_touch")
+        tool_traits = self.get_tool_traits(tool)
+        
+        # Shears or Silk Touch keeps the leaf block itself.
+        if silk_touch_level > 0 or "shears" in tool_traits:
+            return {f"minecraft:{short_id}": 1}
+        
+        rewards: Dict[str, int] = {}
+        
+        sapling_item, sapling_chance = self.get_leaf_sapling_drop(short_id)
+        if sapling_item and random.random() < sapling_chance:
+            rewards[sapling_item] = rewards.get(sapling_item, 0) + 1
+        
+        # Sticks: 2% chance, 1-2 sticks.
+        if random.random() < 0.02:
+            rewards["minecraft:stick"] = rewards.get("minecraft:stick", 0) + random.randint(1, 2)
+        
+        return rewards
+    
+    def calculate_block_rewards(self, block_type: str, tool) -> Tuple[Dict[str, int], float]:
+        """Calculate dropped items and XP for a mined block."""
         short_id = self.normalize_block_id(block_type)
+
+        if short_id.endswith("_leaves"):
+            return self.calculate_leaf_rewards(short_id, tool), 0.0
+        
         silk_touch_level = self.get_enchantment_level(tool, "silk_touch")
         fortune_level = self.get_enchantment_level(tool, "fortune")
         
@@ -1345,9 +1400,7 @@ class VeinMinerPlugin(Plugin):
             }
             silk_block = silk_touch_overrides.get(short_id, short_id)
             drop_item = f"minecraft:{silk_block}"
-            drop_count = 1
-            xp = 0.0
-            return drop_item, drop_count, xp
+            return {drop_item: 1}, 0.0
         
         auto_smelt_applied = self.should_auto_smelt(short_id, silk_touch_level, fortune_level)
         
@@ -1362,10 +1415,10 @@ class VeinMinerPlugin(Plugin):
         if auto_smelt_applied and self.auto_smelt_give_xp:
             xp += self.get_smelt_xp_value(short_id) * self.auto_smelt_xp_multiplier * drop_count
         
-        return drop_item, drop_count, xp
+        return {drop_item: drop_count}, xp
     
-    def drop_item_stack(self, location, item_id: str, amount: int) -> None:
-        """Drop item stacks at a location using summon command fallback."""
+    def drop_item_stack(self, location, item_id: str, amount: int, player=None) -> None:
+        """Drop item stacks, using /give for player overflow on Bedrock."""
         if amount <= 0:
             return
         
@@ -1375,8 +1428,23 @@ class VeinMinerPlugin(Plugin):
         remaining = amount
         while remaining > 0:
             stack_amount = min(64, remaining)
-            command = f'summon item {x} {y} {z} {{Item:{{id:"{namespaced_item_id}",Count:{stack_amount}b}}}}'
-            self.server.dispatch_command(self.server.command_sender, command)
+            dropped = False
+
+            # Bedrock does not allow summoning item entities directly; giving to the
+            # player safely spills extras when inventory is full.
+            if player is not None:
+                give_command = f'give "{player.name}" {namespaced_item_id} {stack_amount}'
+                dropped = bool(self.server.dispatch_command(self.server.command_sender, give_command))
+
+            # Keep legacy summon fallback for environments that support item summon NBT.
+            if not dropped:
+                summon_command = f'summon item {x} {y} {z} {{Item:{{id:"{namespaced_item_id}",Count:{stack_amount}b}}}}'
+                dropped = bool(self.server.dispatch_command(self.server.command_sender, summon_command))
+
+            if not dropped and self.debug_logging:
+                self.logger.warning(
+                    f"Failed to drop item stack {namespaced_item_id} x{stack_amount} at ({x}, {y}, {z})"
+                )
             remaining -= stack_amount
     
     def give_items_to_player(self, player, items_to_give: Dict[str, int]) -> int:
@@ -1397,7 +1465,7 @@ class VeinMinerPlugin(Plugin):
                             overflow_id = self.get_item_type_id(overflow_stack, fallback=item_id)
                             overflow_total += overflow_amount
                             if self.full_inventory_action == "drop":
-                                self.drop_item_stack(player.location, overflow_id, overflow_amount)
+                                self.drop_item_stack(player.location, overflow_id, overflow_amount, player=player)
                 except Exception:
                     # Fallback to command-based give if ItemStack construction fails.
                     try:
@@ -1406,7 +1474,7 @@ class VeinMinerPlugin(Plugin):
                     except Exception:
                         overflow_total += stack_amount
                         if self.full_inventory_action == "drop":
-                            self.drop_item_stack(player.location, item_id, stack_amount)
+                            self.drop_item_stack(player.location, item_id, stack_amount, player=player)
                 
                 remaining -= stack_amount
         
