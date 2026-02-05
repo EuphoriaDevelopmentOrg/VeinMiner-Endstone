@@ -21,23 +21,7 @@ A configurable vein-mining plugin for Endstone servers.
 - Mining pattern controls (`adjacent`, `cube`, `sphere`, `vertical`, `horizontal`).
 - Particle and sound effects (per-block or completion).
 - Player statistics and milestone announcements.
-- Update checker against GitHub releases.
-
-## Installation
-
-```bash
-pip install endstone-vein-miner
-```
-
-Or from source:
-
-```bash
-git clone https://github.com/EuphoriaDevelopmentOrg/VeinMiner-Endstone.git
-cd VeinMiner-Endstone
-pip install -e .
-```
-
-Start your Endstone server. The plugin is auto-discovered through the `endstone` entry point.
+- Update checker against GitHub releases
 
 ## Commands
 
