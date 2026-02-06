@@ -9,6 +9,7 @@ from endstone import ColorFormat
 from endstone.inventory import ItemStack
 from typing import Set, Dict, List, Optional, Tuple
 from collections import deque
+import math
 import time
 import random
 
@@ -17,7 +18,7 @@ class VeinMinerPlugin(Plugin):
     """Main plugin class for VeinMiner"""
     
     api_version = "0.10"
-    version = "2.0.0"
+    version = "2.0.1"
     
     commands = {
         "veinminer": {
@@ -31,6 +32,10 @@ class VeinMinerPlugin(Plugin):
     permissions = {
         "veinminer.use": {
             "description": "Allows players to use vein mining",
+            "default": True
+        },
+        "veinminer.chain": {
+            "description": "Allows players to use chain mining",
             "default": True
         },
         "veinminer.command": {
@@ -61,6 +66,21 @@ class VeinMinerPlugin(Plugin):
     BATCH_SIZE = 10  # Process blocks in batches
     MIN_WORLD_HEIGHT = -64  # Minimum Y coordinate
     MAX_WORLD_HEIGHT = 320  # Maximum Y coordinate
+    CHAIN_BLOCK_BLACKLIST = {
+        "bedrock",
+        "barrier",
+        "command_block",
+        "chain_command_block",
+        "repeating_command_block",
+        "structure_block",
+        "structure_void",
+        "jigsaw",
+        "end_portal",
+        "end_portal_frame",
+        "allow",
+        "deny",
+        "border_block",
+    }
     
     def __init__(self):
         super().__init__()
@@ -97,6 +117,18 @@ class VeinMinerPlugin(Plugin):
         self.include_diagonals = True
         self.vertical_range = 4
         self.horizontal_range = 4
+        
+        # Chain mining (independent from vein pattern detection)
+        self.chain_mining_enabled = False
+        self.chain_activation_mode = "stand"  # sneak, stand, always
+        self.chain_require_correct_tool = True
+        self.chain_per_block_permissions = False
+        self.chain_only_configured_blocks = False
+        self.chain_width_radius = 1
+        self.chain_height_radius = 1
+        self.chain_depth = 3
+        self.chain_max_blocks = 256
+        self.chain_same_block_only = False
         
         # Limits and anti-abuse
         self.enable_limits = False
@@ -145,6 +177,7 @@ class VeinMinerPlugin(Plugin):
         self.stats_tracker = None
         self.vein_miner_command = None
         self.disabled_players: Set[str] = set()
+        self.chain_disabled_players: Set[str] = set()
         
         # Performance tracking
         self.last_vein_mine: Dict[str, int] = {}  # player_id -> timestamp
@@ -428,6 +461,66 @@ class VeinMinerPlugin(Plugin):
         if self.horizontal_range > 16:
             self.horizontal_range = 16
 
+        # Load independent chain mining settings
+        chain_config = config.get("chain-mining", {})
+        self.chain_mining_enabled = bool(chain_config.get("enabled", False))
+        self.chain_activation_mode = str(chain_config.get("mode", "stand")).lower()
+        if self.chain_activation_mode not in ["sneak", "stand", "always"]:
+            self.logger.warning(f"Invalid chain mining mode '{self.chain_activation_mode}', using 'stand'")
+            self.chain_activation_mode = "stand"
+
+        self.chain_require_correct_tool = bool(chain_config.get("require-correct-tool", True))
+        self.chain_per_block_permissions = bool(chain_config.get("per-block-permissions", False))
+        self.chain_only_configured_blocks = bool(chain_config.get("only-configured-blocks", False))
+        self.chain_width_radius = chain_config.get("width-radius", 1)
+        self.chain_height_radius = chain_config.get("height-radius", 1)
+        self.chain_depth = chain_config.get("depth", 3)
+        self.chain_max_blocks = chain_config.get("max-blocks", 256)
+        self.chain_same_block_only = chain_config.get("same-block-only", False)
+
+        try:
+            self.chain_width_radius = int(self.chain_width_radius)
+        except (TypeError, ValueError):
+            self.chain_width_radius = 1
+        try:
+            self.chain_height_radius = int(self.chain_height_radius)
+        except (TypeError, ValueError):
+            self.chain_height_radius = 1
+        try:
+            self.chain_depth = int(self.chain_depth)
+        except (TypeError, ValueError):
+            self.chain_depth = 3
+        try:
+            self.chain_max_blocks = int(self.chain_max_blocks)
+        except (TypeError, ValueError):
+            self.chain_max_blocks = 256
+
+        if self.chain_width_radius < 0:
+            self.chain_width_radius = 0
+        if self.chain_height_radius < 0:
+            self.chain_height_radius = 0
+        if self.chain_depth < 1:
+            self.chain_depth = 1
+        if self.chain_max_blocks < 1:
+            self.chain_max_blocks = 1
+
+        if self.chain_width_radius > 8:
+            self.logger.warning("chain-mining width-radius too high, clamping to 8 for safety")
+            self.chain_width_radius = 8
+        if self.chain_height_radius > 8:
+            self.logger.warning("chain-mining height-radius too high, clamping to 8 for safety")
+            self.chain_height_radius = 8
+        if self.chain_depth > 16:
+            self.logger.warning("chain-mining depth too high, clamping to 16 for safety")
+            self.chain_depth = 16
+        if self.chain_max_blocks > self.UNLIMITED_MAX_BLOCKS:
+            self.logger.warning(
+                f"chain-mining max-blocks too high, clamping to {self.UNLIMITED_MAX_BLOCKS} for safety"
+            )
+            self.chain_max_blocks = self.UNLIMITED_MAX_BLOCKS
+
+        self.chain_same_block_only = bool(self.chain_same_block_only)
+
         # Load limits and anti-abuse settings
         limits_config = config.get("limits", {})
         self.enable_limits = limits_config.get("enable-limits", False)
@@ -523,6 +616,8 @@ class VeinMinerPlugin(Plugin):
             "milestone-reached": messages.get("milestone-reached", "&6&l{player} &ehas mined &6{count} &eblocks with VeinMiner!"),
             "toggle-enabled": messages.get("toggle-enabled", "&aVein Mining enabled!"),
             "toggle-disabled": messages.get("toggle-disabled", "&cVein Mining disabled!"),
+            "chain-toggle-enabled": messages.get("chain-toggle-enabled", "&aChain Mining enabled!"),
+            "chain-toggle-disabled": messages.get("chain-toggle-disabled", "&cChain Mining disabled!"),
         }
         self.inventory_full_message = messages.get("inventory-full", "&eInventory full! {count} items were {action}.")
         
@@ -549,6 +644,11 @@ class VeinMinerPlugin(Plugin):
             self.logger.info(ColorFormat.GREEN + f"[Config] Effects: {'enabled' if (self.particles_enabled or self.sounds_enabled) else 'disabled'}")
             self.logger.info(ColorFormat.GREEN + f"[Config] Durability multiplier: {self.durability_multiplier}x")
             self.logger.info(ColorFormat.GREEN + f"[Config] Mining pattern: {self.mining_pattern}")
+            if self.chain_mining_enabled:
+                self.logger.info(
+                    ColorFormat.GREEN
+                    + f"[Config] Chain mining: enabled ({(self.chain_width_radius * 2) + 1}x{(self.chain_height_radius * 2) + 1}x{self.chain_depth})"
+                )
             
     def reload_configuration(self) -> None:
         """Reload configuration and reset all caches"""
@@ -767,6 +867,16 @@ class VeinMinerPlugin(Plugin):
         if self.debug_logging:
             self.logger.info(f"[DEBUG] Player join event triggered: {event.player.name}")
             event.player.send_message(ColorFormat.YELLOW + "[DEBUG] VeinMiner event handler is working!")
+
+    def is_activation_mode_met(self, mode: str, player) -> bool:
+        """Check whether a player's state matches the configured activation mode."""
+        if mode == "always":
+            return True
+        if mode == "sneak":
+            return bool(getattr(player, "is_sneaking", False))
+        if mode == "stand":
+            return not bool(getattr(player, "is_sneaking", False))
+        return False
             
     @event_handler(priority=EventPriority.HIGH)
     def on_block_break(self, event: BlockBreakEvent) -> None:
@@ -792,17 +902,9 @@ class VeinMinerPlugin(Plugin):
                 self.logger.info(f"[DEBUG] {player.name} is temporarily blocked")
             return
         
-        # Check permission
-        if not player.has_permission("veinminer.use"):
-            if self.debug_logging:
-                self.logger.info(f"[DEBUG] No permission for {player.name}")
-            return
-            
-        # Check if player has toggled vein mining off
-        if player.unique_id in self.disabled_players:
-            if self.debug_logging:
-                self.logger.info(f"[DEBUG] Vein mining disabled for {player.name}")
-            return
+        # Permissions and toggles (vein mining only)
+        has_vein_permission = player.has_permission("veinminer.use")
+        vein_enabled_for_player = has_vein_permission and (player.unique_id not in self.disabled_players)
         
         # Security: Check rate limits
         if not self.check_rate_limits(player_id):
@@ -838,22 +940,30 @@ class VeinMinerPlugin(Plugin):
                 self.logger.info(f"[DEBUG] World {player.level.name} is disabled")
             return
         
-        # Check activation mode
-        activation_ok = False
-        if self.activation_mode == "always":
-            activation_ok = True
-        elif self.activation_mode == "sneak":
-            activation_ok = player.is_sneaking
-        elif self.activation_mode == "stand":
-            activation_ok = not player.is_sneaking
-            
+        block_id = block.type
+
+        # Independent chain mining handler (does not depend on vein mining pattern).
+        if self.try_chain_mining(event, player, block, block_id, player_id):
+            return
+
+        if not vein_enabled_for_player:
+            if self.debug_logging:
+                if not has_vein_permission:
+                    self.logger.info(f"[DEBUG] No vein mining permission for {player.name}")
+                else:
+                    self.logger.info(f"[DEBUG] Vein mining disabled for {player.name}")
+            return
+
+        # Check activation mode for vein mining
+        activation_ok = self.is_activation_mode_met(self.activation_mode, player)
         if not activation_ok:
             if self.debug_logging:
-                self.logger.info(f"[DEBUG] Activation mode not met (mode: {self.activation_mode}, sneaking: {player.is_sneaking})")
+                self.logger.info(
+                    f"[DEBUG] Activation mode not met (mode: {self.activation_mode}, sneaking: {player.is_sneaking})"
+                )
             return
             
         # Check if block is vein-mineable
-        block_id = block.type
         
         if block_id not in self.vein_blocks:
             return
@@ -964,6 +1074,103 @@ class VeinMinerPlugin(Plugin):
         finally:
             # Always remove processing flag
             self.processing_vein.discard(player_id)
+
+    def try_chain_mining(self, event: BlockBreakEvent, player, block, block_id: str, player_id: str) -> bool:
+        """Attempt independent chain mining. Returns True if handled."""
+        if not self.chain_mining_enabled:
+            return False
+
+        if not self.is_activation_mode_met(self.chain_activation_mode, player):
+            return False
+
+        if not player.has_permission("veinminer.chain"):
+            return False
+
+        if player_id in self.chain_disabled_players:
+            return False
+
+        if self.chain_only_configured_blocks and block_id not in self.vein_blocks:
+            return False
+
+        if self.chain_per_block_permissions:
+            block_perm = f"veinminer.chain.blocks.{block_id.replace('minecraft:', '')}"
+            if not player.has_permission(block_perm):
+                if self.debug_logging:
+                    self.logger.info(f"[DEBUG] {player.name} lacks chain permission: {block_perm}")
+                self.send_message(player, "no-permission")
+                return True
+
+        if player_id in self.processing_vein:
+            return True
+
+        # Mark player as processing
+        self.processing_vein.add(player_id)
+
+        try:
+            tool = player.inventory.item_in_main_hand
+
+            if self.chain_require_correct_tool and not self.is_proper_tool(block_id, tool):
+                self.send_message(player, "wrong-tool")
+                return True
+
+            start_time = time.time() if self.performance_logging else 0
+            targets = self.find_chain_mining_targets(block, player.dimension, player)
+
+            if not targets:
+                return True
+
+            if self.performance_logging:
+                elapsed = (time.time() - start_time) * 1000
+                self.logger.info(f"[Performance] Chain target scan took {elapsed:.2f}ms for {len(targets)} blocks")
+
+            actual_size = len(targets)
+
+            if not self.check_daily_limits(player_id, min(actual_size, self.chain_max_blocks)):
+                if self.debug_logging:
+                    self.logger.info(f"[DEBUG] {player.name} exceeded daily limit (chain mining)")
+                self.send_message(player, "limit-reached")
+                return True
+
+            # Cancel normal break behavior
+            event.is_cancelled = True
+
+            if self.logging_enabled and self.log_vein_mining:
+                self.logger.info(
+                    ColorFormat.YELLOW
+                    + f"[ChainMine] Player: {player.name} | Block: {block_id} | Blocks: {actual_size}"
+                )
+
+            process_start = time.time() if self.performance_logging else 0
+            process_result = self.process_vein_mining(player, targets, tool)
+            successful_breaks = process_result.get("successful_breaks", 0)
+            xp_gained = process_result.get("xp_gained", 0)
+
+            if successful_breaks > 0:
+                self.record_vein_usage(player_id, successful_breaks)
+
+                if self.stats_tracker:
+                    self.stats_tracker.record_vein_mine(player, successful_breaks)
+
+                tip = ColorFormat.GOLD + "Chain Mining: " + ColorFormat.WHITE + f"{successful_breaks} blocks"
+                if xp_gained > 0:
+                    tip += ColorFormat.GRAY + f" (+{xp_gained} XP)"
+                player.send_tip(tip)
+
+            if self.performance_logging:
+                elapsed = (time.time() - process_start) * 1000
+                self.logger.info(f"[Performance] Chain processing took {elapsed:.2f}ms for {successful_breaks} blocks")
+
+            # Update last mine time
+            self.last_vein_mine[player_id] = int(time.time() * 1000)
+
+        except Exception as e:
+            self.logger.error(f"Error during chain mining: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.processing_vein.discard(player_id)
+
+        return True
             
     def process_vein_mining(self, player, vein: Set, tool) -> Dict[str, int]:
         """Process the mining of all blocks in a vein and return summary stats."""
@@ -1263,6 +1470,121 @@ class VeinMinerPlugin(Plugin):
             offsets = offsets[:512]
         
         return offsets
+
+    def get_chain_depth_axis(self, player) -> Tuple[str, int]:
+        """Resolve the depth axis/sign from the player's current look direction."""
+        try:
+            location = player.location
+            yaw = float(getattr(location, "yaw", 0.0))
+            pitch = float(getattr(location, "pitch", 0.0))
+        except Exception:
+            return "z", 1
+
+        yaw_rad = math.radians(yaw)
+        pitch_rad = math.radians(pitch)
+
+        forward_components = {
+            "x": -math.sin(yaw_rad) * math.cos(pitch_rad),
+            "y": -math.sin(pitch_rad),
+            "z": math.cos(yaw_rad) * math.cos(pitch_rad),
+        }
+
+        depth_axis = max(forward_components, key=lambda axis: abs(forward_components[axis]))
+        depth_sign = 1 if forward_components[depth_axis] >= 0 else -1
+        return depth_axis, depth_sign
+
+    def find_chain_mining_targets(self, start_block, dimension, player) -> Set:
+        """Build a directional cuboid centered on the broken block."""
+        if not start_block or not dimension or not player:
+            return set()
+
+        try:
+            start_type = start_block.type
+            start_x, start_y, start_z = start_block.x, start_block.y, start_block.z
+        except Exception as e:
+            if self.debug_logging:
+                self.logger.error(f"[Chain] Invalid start block: {str(e)}")
+            return set()
+
+        depth_axis, depth_sign = self.get_chain_depth_axis(player)
+
+        if depth_axis == "x":
+            width_axis, height_axis = "z", "y"
+        elif depth_axis == "z":
+            width_axis, height_axis = "x", "y"
+        else:
+            width_axis, height_axis = "x", "z"
+
+        max_distance_sq = self.max_reach_distance * self.max_reach_distance
+        max_chain_blocks = max(1, self.chain_max_blocks)
+        targets: Set = set()
+
+        for depth_step in range(self.chain_depth):
+            depth_offset = depth_step * depth_sign
+            for width_offset in range(-self.chain_width_radius, self.chain_width_radius + 1):
+                for height_offset in range(-self.chain_height_radius, self.chain_height_radius + 1):
+                    x = start_x
+                    y = start_y
+                    z = start_z
+
+                    if depth_axis == "x":
+                        x += depth_offset
+                    elif depth_axis == "y":
+                        y += depth_offset
+                    else:
+                        z += depth_offset
+
+                    if width_axis == "x":
+                        x += width_offset
+                    elif width_axis == "y":
+                        y += width_offset
+                    else:
+                        z += width_offset
+
+                    if height_axis == "x":
+                        x += height_offset
+                    elif height_axis == "y":
+                        y += height_offset
+                    else:
+                        z += height_offset
+
+                    if y < self.MIN_WORLD_HEIGHT or y > self.MAX_WORLD_HEIGHT:
+                        continue
+
+                    dx = x - start_x
+                    dy = y - start_y
+                    dz = z - start_z
+                    if (dx * dx + dy * dy + dz * dz) > max_distance_sq:
+                        continue
+
+                    try:
+                        target_block = dimension.get_block_at(x, y, z)
+                    except Exception:
+                        continue
+
+                    if not target_block:
+                        continue
+
+                    target_type = str(getattr(target_block, "type", ""))
+                    normalized_target_type = self.normalize_block_id(target_type)
+                    if normalized_target_type in {"air", "cave_air", "void_air"}:
+                        continue
+
+                    if normalized_target_type in self.CHAIN_BLOCK_BLACKLIST:
+                        continue
+
+                    if self.chain_only_configured_blocks and target_type not in self.vein_blocks:
+                        continue
+
+                    if self.chain_same_block_only and target_type != start_type:
+                        continue
+
+                    targets.add(target_block)
+
+                    if len(targets) >= max_chain_blocks:
+                        return targets
+
+        return targets
     
     def should_auto_smelt(self, block_id: str, silk_touch_level: int, fortune_level: int) -> bool:
         """Determine whether auto-smelt should apply for a mined block."""

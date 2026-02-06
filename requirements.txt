@@ -1,0 +1,3 @@
+endstone>=0.10.0
+pyyaml>=6.0
+mysql-connector-python>=8.0.0

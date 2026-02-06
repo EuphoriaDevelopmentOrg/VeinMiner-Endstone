@@ -82,6 +82,28 @@ vertical-range = 4
 # For horizontal pattern: max width to search
 horizontal-range = 4
 
+# Independent chain mining (directional cuboid from the mined block) Not recommended for Big Servers!
+[chain-mining]
+enabled = false
+# Activation mode: "sneak" (hold shift), "stand" (not sneaking), "always"
+mode = "stand"
+# Only work with proper tools (pickaxe for ores, axe for logs, etc.)
+require-correct-tool = true
+# Require specific permission per block type (veinminer.chain.blocks.coal_ore, etc.)
+per-block-permissions = false
+# Restrict chain mining to configured vein blocks only
+only-configured-blocks = false
+# Cross-section width radius (1 = 3 blocks wide)
+width-radius = 1
+# Cross-section height radius (1 = 3 blocks tall)
+height-radius = 1
+# Depth from the mined block (includes the center layer; 3 = 3 layers deep)
+depth = 3
+# Maximum number of blocks to process in a chain operation
+max-blocks = 256
+# If true, only mine blocks matching the original block type
+same-block-only = false
+
 # Particle customization
 [effects.particles]
 # Enable particle effects when breaking blocks
@@ -181,6 +203,8 @@ wrong-tool = "&cYou need the correct tool to vein mine this block!"
 no-permission = "&cYou don't have permission to vein mine this block type!"
 limit-reached = "&cYou've reached your daily vein mining limit!"
 milestone-reached = "&6&l{player} &ehas mined &6{count} &eblocks with VeinMiner!"
+chain-toggle-enabled = "&aChain Mining enabled!"
+chain-toggle-disabled = "&cChain Mining disabled!"
 
 [blocks]
 # Ores

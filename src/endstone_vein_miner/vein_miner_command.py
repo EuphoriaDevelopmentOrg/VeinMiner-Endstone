@@ -128,6 +128,82 @@ class VeinMinerCommand:
                     
                 return True
                 
+            elif subcommand in ["chain"]:
+                if not hasattr(sender, 'unique_id'):
+                    sender.send_message(ColorFormat.RED + "This command can only be used by players.")
+                    return True
+
+                if not sender.has_permission("veinminer.chain"):
+                    sender.send_message(ColorFormat.RED + "You don't have permission to use chain mining.")
+                    return True
+
+                if not plugin.chain_mining_enabled:
+                    sender.send_message(ColorFormat.RED + "Chain mining is disabled in the config.")
+                    return True
+
+                if len(args) < 2:
+                    sender.send_message(ColorFormat.YELLOW + "Usage: /vm chain <toggle|on|off|status>")
+                    return True
+
+                chain_cmd = args[1].lower()
+                uuid = sender.unique_id
+
+                if chain_cmd in ["toggle", "t"]:
+                    if uuid in plugin.chain_disabled_players:
+                        plugin.chain_disabled_players.remove(uuid)
+                        if hasattr(plugin, "send_message"):
+                            plugin.send_message(sender, "chain-toggle-enabled")
+                        else:
+                            sender.send_message(ColorFormat.GREEN + "Chain Mining enabled!")
+                    else:
+                        plugin.chain_disabled_players.add(uuid)
+                        if hasattr(plugin, "send_message"):
+                            plugin.send_message(sender, "chain-toggle-disabled")
+                        else:
+                            sender.send_message(ColorFormat.RED + "Chain Mining disabled!")
+                    return True
+
+                if chain_cmd in ["on", "enable"]:
+                    if uuid not in plugin.chain_disabled_players:
+                        sender.send_message(ColorFormat.YELLOW + "Chain Mining is already enabled!")
+                    else:
+                        plugin.chain_disabled_players.remove(uuid)
+                        if hasattr(plugin, "send_message"):
+                            plugin.send_message(sender, "chain-toggle-enabled")
+                        else:
+                            sender.send_message(ColorFormat.GREEN + "Chain Mining enabled!")
+                    return True
+
+                if chain_cmd in ["off", "disable"]:
+                    if uuid in plugin.chain_disabled_players:
+                        sender.send_message(ColorFormat.YELLOW + "Chain Mining is already disabled!")
+                    else:
+                        plugin.chain_disabled_players.add(uuid)
+                        if hasattr(plugin, "send_message"):
+                            plugin.send_message(sender, "chain-toggle-disabled")
+                        else:
+                            sender.send_message(ColorFormat.RED + "Chain Mining disabled!")
+                    return True
+
+                if chain_cmd in ["status", "info"]:
+                    is_enabled = uuid not in plugin.chain_disabled_players
+                    sender.send_message(
+                        ColorFormat.GOLD + "â–¬" * 8
+                        + " " + ColorFormat.BOLD + "Chain Mining Status" + ColorFormat.RESET
+                        + ColorFormat.GOLD + " " + "â–¬" * 8
+                    )
+                    sender.send_message(
+                        ColorFormat.YELLOW + "Status: "
+                        + (ColorFormat.GREEN + "âœ“ Enabled" if is_enabled else ColorFormat.RED + "âœ— Disabled")
+                    )
+                    sender.send_message(ColorFormat.YELLOW + "Mode: " + ColorFormat.WHITE + plugin.chain_activation_mode)
+                    sender.send_message(ColorFormat.GOLD + "â–¬" * 34)
+                    return True
+
+                sender.send_message(ColorFormat.RED + "Unknown chain subcommand: " + ColorFormat.GRAY + chain_cmd)
+                sender.send_message(ColorFormat.YELLOW + "Use " + ColorFormat.WHITE + "/vm chain toggle" + ColorFormat.YELLOW + " to toggle.")
+                return True
+
             elif subcommand in ["status", "info"]:
                 if not hasattr(sender, 'unique_id'):
                     sender.send_message(ColorFormat.RED + "This command can only be used by players.")
@@ -188,6 +264,11 @@ class VeinMinerCommand:
             sender.send_message(ColorFormat.AQUA + "/vm on" + ColorFormat.GRAY + " - Enable vein mining")
             sender.send_message(ColorFormat.AQUA + "/vm off" + ColorFormat.GRAY + " - Disable vein mining")
             sender.send_message(ColorFormat.AQUA + "/vm status" + ColorFormat.GRAY + " - Check your status")
+        if sender.has_permission("veinminer.chain"):
+            sender.send_message(ColorFormat.AQUA + "/vm chain toggle" + ColorFormat.GRAY + " - Toggle chain mining on/off")
+            sender.send_message(ColorFormat.AQUA + "/vm chain on" + ColorFormat.GRAY + " - Enable chain mining")
+            sender.send_message(ColorFormat.AQUA + "/vm chain off" + ColorFormat.GRAY + " - Disable chain mining")
+            sender.send_message(ColorFormat.AQUA + "/vm chain status" + ColorFormat.GRAY + " - Check chain status")
             
         sender.send_message("")
         sender.send_message(ColorFormat.GRAY + "Tip: Sneak (Shift) while mining to activate!")

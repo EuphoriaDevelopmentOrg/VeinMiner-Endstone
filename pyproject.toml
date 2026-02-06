@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "endstone-vein-miner"
-version = "2.0.0"
+version = "2.0.1"
 description = "A powerful vein mining plugin for Endstone servers - mine entire ore veins, trees, and leaves with one hit!"
 authors = [
     {name = "Euphoria Development"}
