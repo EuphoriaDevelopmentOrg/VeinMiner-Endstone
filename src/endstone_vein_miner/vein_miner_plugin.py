@@ -17,8 +17,8 @@ import random
 class VeinMinerPlugin(Plugin):
     """Main plugin class for VeinMiner"""
     
-    api_version = "0.10"
-    version = "2.0.1"
+    api_version = "0.11"
+    version = "2.0.2"
     
     commands = {
         "veinminer": {
@@ -40,7 +40,7 @@ class VeinMinerPlugin(Plugin):
         },
         "veinminer.command": {
             "description": "Allows use of /veinminer command",
-            "default": True
+            "default": "op"
         },
         "veinminer.reload": {
             "description": "Allows reloading the plugin configuration",

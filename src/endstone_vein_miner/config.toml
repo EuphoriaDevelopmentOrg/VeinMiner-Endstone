@@ -137,7 +137,7 @@ block-sound = "dig.stone"
 enable-limits = false
 max-veins-per-day = 1000
 max-blocks-per-day = 10000
-reset-time = "00:00"  # Time to reset daily limits (24-hour format)
+reset-time = "00:00"  # Reserved for future use (current reset is fixed 24-hour scheduler)
 
 # Anti-abuse settings
 [anti-abuse]
@@ -152,8 +152,8 @@ log-suspicious-activity = true
 enabled = true
 storage = "yaml"  # "yaml" or "mysql"
 save-to-file = true  # Persist stats to stats.yml
-auto-save-interval = 300  # Auto-save interval in seconds (0 = save on disable only)
-track-per-block-type = true  # Track stats for each block type separately
+auto-save-interval = 300  # Auto-save interval in seconds (0 = save on each stat update)
+track-per-block-type = true  # Reserved for future per-block stats breakdown
 milestones = { enabled = true, thresholds = [100, 500, 1000, 5000, 10000] }
 # Announce milestones to all players
 broadcast-milestones = true

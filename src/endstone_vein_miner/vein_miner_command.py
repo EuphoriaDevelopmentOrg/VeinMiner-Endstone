@@ -12,6 +12,12 @@ class VeinMinerCommand:
     """VeinMiner command handler (static helper)"""
     
     LOG_TAG = "[VeinMiner] "
+
+    @staticmethod
+    def is_admin_sender(sender: CommandSender) -> bool:
+        if not hasattr(sender, "unique_id"):
+            return True
+        return bool(getattr(sender, "is_op", False))
     
     @staticmethod
     def handle_command(plugin, sender: CommandSender, args: List[str]) -> bool:
@@ -34,6 +40,10 @@ class VeinMinerCommand:
             elif subcommand in ["reload", "rl"]:
                 if not sender.has_permission("veinminer.reload"):
                     sender.send_message(ColorFormat.RED + "You don't have permission to reload.")
+                    return True
+
+                if not VeinMinerCommand.is_admin_sender(sender):
+                    sender.send_message(ColorFormat.RED + "Only OPs can run plugin-wide settings commands.")
                     return True
                     
                 plugin.reload_configuration()

@@ -2,6 +2,8 @@
 
 A configurable vein-mining plugin for Endstone servers.
 
+Requires Endstone `v0.11.0` or newer.
+
 ## Features
 
 - Vein mining for ores, logs, and leaves.
@@ -19,9 +21,26 @@ A configurable vein-mining plugin for Endstone servers.
 - Auto-pickup with overflow handling (`drop` or `delete`).
 - Anti-abuse and limits (per-minute and daily caps).
 - Mining pattern controls (`adjacent`, `cube`, `sphere`, `vertical`, `horizontal`).
+- Independent chain mining (directional 3x3xdepth-style cuboid).
 - Particle and sound effects (per-block or completion).
 - Player statistics and milestone announcements.
-- Update checker against GitHub releases
+- Update checker against GitHub releases.
+
+## Installation
+
+```bash
+pip install endstone-vein-miner
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/EuphoriaDevelopmentOrg/VeinMiner-Endstone.git
+cd VeinMiner-Endstone
+pip install -e .
+```
+
+Start your Endstone server. The plugin is auto-discovered through the `endstone` entry point.
 
 ## Commands
 
@@ -34,13 +53,20 @@ A configurable vein-mining plugin for Endstone servers.
 | `/vm on` | Enable vein miner | `veinminer.toggle` |
 | `/vm off` | Disable vein miner | `veinminer.toggle` |
 | `/vm status` | Show current status | `veinminer.toggle` |
+| `/vm chain toggle` | Toggle chain mining | `veinminer.chain` |
+| `/vm chain on` | Enable chain mining | `veinminer.chain` |
+| `/vm chain off` | Disable chain mining | `veinminer.chain` |
+| `/vm chain status` | Show chain status | `veinminer.chain` |
 
 Aliases: `/vm`, `/vmine`
+
+Note: plugin-wide settings actions (currently `/vm reload`) require OP (or console) at runtime.
 
 ## Permissions
 
 - `veinminer.use` (default: true)
-- `veinminer.command` (default: true)
+- `veinminer.chain` (default: true)
+- `veinminer.command` (default: op)
 - `veinminer.reload` (default: op)
 - `veinminer.stats` (default: true)
 - `veinminer.toggle` (default: true)
@@ -66,16 +92,19 @@ The plugin writes `config.toml` to the plugin data folder.
   - `mode`, `per-block-permissions`, `require-correct-tool`, `max-reach-distance`
 - `[mining-pattern]`
   - `pattern`, `radius`, `include-diagonals`, `vertical-range`, `horizontal-range`
+- `[chain-mining]`
+  - `enabled`, `mode`, `require-correct-tool`, `per-block-permissions`, `only-configured-blocks`
+  - `width-radius`, `height-radius`, `depth`, `max-blocks`, `same-block-only`
 - `[effects.particles]`
   - `enabled`, `type`, `count`, `radius`, `per-block`
 - `[effects.sounds]`
   - `enabled`, `completion-sound`, `volume`, `pitch`, `per-block-sound`, `block-sound`
 - `[limits]`
-  - `enable-limits`, `max-veins-per-day`, `max-blocks-per-day`, `reset-time`
+  - `enable-limits`, `max-veins-per-day`, `max-blocks-per-day`
 - `[anti-abuse]`
   - `max-veins-per-minute`, `temporary-block-duration`, `log-suspicious-activity`
 - `[statistics]`
-  - `enabled`, `storage`, `save-to-file`, `auto-save-interval`, `track-per-block-type`, `milestones`, `broadcast-milestones`
+  - `enabled`, `storage`, `save-to-file`, `auto-save-interval`, `milestones`, `broadcast-milestones`
 - `[statistics.mysql]`
   - `enabled`, `host`, `port`, `database`, `user`, `password`, `table-prefix`, `connect-timeout`
 - `[update-checker]`, `[logging]`, `[enabled-blocks]`, `[messages]`, `[blocks]`
@@ -84,6 +113,7 @@ Notes:
 - `max-blocks = -1` is accepted and internally capped for safety.
 - `auto-smelt.whitelist` accepts block ids with or without `minecraft:` prefix.
 - `statistics.auto-save-interval = 0` means save on each update; otherwise periodic saves are used.
+- `limits.reset-time` is currently not enforced; daily reset runs on a fixed 24-hour scheduler.
 
 ## Behavior Notes
 
