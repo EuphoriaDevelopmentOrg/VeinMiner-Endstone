@@ -18,7 +18,7 @@ class VeinMinerPlugin(Plugin):
     """Main plugin class for VeinMiner"""
     
     api_version = "0.11"
-    version = "2.0.2"
+    version = "2.0.3"
     
     commands = {
         "veinminer": {
